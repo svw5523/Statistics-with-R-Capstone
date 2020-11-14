@@ -1,0 +1,194 @@
+---
+title: "EDA and Basic Model Selection"
+author: "Shaohan Wang"
+date: "08/27/2020"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Front Matter
+
+```{r message=FALSE, warning=FALSE}
+# clean up workspace environment
+rm(list = ls())
+```
+
+
+First, let us load the data and necessary packages:
+
+```{r load, message=FALSE, warning=FALSE}
+load("ames_train.Rdata")
+library(MASS)
+library(dplyr)
+library(ggplot2)
+library(BAS)
+library(broom)
+library(DataComputing)
+```
+
+#
+Make a labeled histogram (with 30 bins) of the ages of the houses in the data set, and describe the distribution.
+
+
+```{r Q1}
+# type your code for Question 1 here, and Knit
+ames_train %>%
+  mutate(age_2020 = 2020 - Year.Built) %>%
+  ggplot(aes(x = age_2020)) +
+  geom_histogram(bins = 30)
+  
+ames_train <-
+  ames_train %>%
+  mutate(age_2020 = 2020 - Year.Built)
+
+summary(ames_train$age_2020)
+```
+
+* * *
+
+* The houses in this datatset has average age of around 47 years. The histogram distribution is extremely right-skewed. The oldest house has 148 years and many of the relatively new houses are built within 20 years.
+
+* * *
+
+
+#
+The mantra in real estate is "Location, Location, Location!" Make a graphical display that relates a home price to its neighborhood in Ames, Iowa. Which summary statistics are most appropriate to use for determining the most expensive, least expensive, and most heterogeneous (having the most variation in housing price) neighborhoods? Report which neighborhoods these are based on the summary statistics of your choice. Report the value of your chosen summary statistics for these neighborhoods.
+
+
+```{r Q2, fig.height=10, fig.width=10}
+# type your code for Question 2 here, and Knit
+ames_train %>%
+  ggplot(aes(x = reorder(Neighborhood, price/1000, mean), y = price/1000)) +
+  geom_boxplot(stat = 'boxplot') +
+  ylab('price in thousand') +
+  coord_flip()
+  
+```
+
+
+* * *
+
+* According to the graph of the neighborhoods agains prices of Ames, Iowa neighborhoods, it is clear that houses in StoneBr have the highest average price and houses in MeadowV have the lowest average price. StoneBr and NridgHt have relatively more variation in housing price. I use side-by-side boxplot to show the association between home price and its neighborhood and easily determine the most expensive, least expensive, and most heterogeneous neighborhoods by the graph.
+
+* * *
+
+# 
+
+Which variable has the largest number of missing values? Explain why it makes sense that there are so many missing values for this variable.
+
+```{r Q3}
+# type your code for Question 3 here, and Knit
+na_count <- colSums(is.na(ames_train))
+head(sort(na_count, decreasing = TRUE))
+summary(ames_train$Pool.QC)
+```
+
+
+* * *
+
+* Pool.QC has the largest number of missing values because people without high income level or larger house area may not have a pool in their houses. 
+
+
+* * *
+
+#
+
+We want to predict the natural log of the home prices. Candidate explanatory variables are lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). Pick a model selection or model averaging method covered in the Specialization, and describe how this method works. Then, use this method to find the best multiple regression model for predicting the natural log of the home prices.
+
+
+```{r Q4}
+# type your code for Question 4 here, and Knit
+# establish a multiple linear regression model
+model1 <-
+  lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = ames_train)
+summary(model1)
+
+# establish a bayesian multiple regression model by applying BMA to the log of price using potential predictors
+model2 <- 
+  bas.lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = ames_train, prior = 'BIC', modelprior = uniform(), method = 'MCMC')
+summary(model2)
+```
+
+* * *
+
+* We use two models, multiple linear regression model and bayesian multiple regression model to help predict our response variable log price. In linear model, we have most of the regressors clearly stat significant except Land.SlopeMod which has relatively larger p-values. In Bayesian regression model, we use BIC as prior distribution and Markov Chain Monte Carlo as the method in computing model likelihoods. We also use the `summary` function to check the posterior prob and Bayes factors and thus, find out that our current model has the best goodness of fit. Hence, Bayesian multiple regression model is the better model here.
+
+
+* * *
+
+#
+
+Which home has the largest squared residual in the previous analysis (Question 4)? Looking at all the variables in the data set, can you explain why this home stands out from the rest (what factors contribute to the high squared residual and why are those factors relevant)?
+
+
+```{r Q5}
+# type your code for Question 5 here, and Knit
+plot(model2) # bayesian regression model diagnostic
+image(model2) 
+
+exp(model1$fitted.values[428]) # linear gression model prediction for case 428 home price
+ames_train[428,3] # actual home price for case 428 and a lot different from our prediction
+```
+
+* * *
+
+* By the graph of residuals v.s. fitted, we found that case 428 has higher deviations from the population regression model. Thus, case 428 has the largest squared residual. The reasons for this home stands out from the rest are that this house was built very early and has relatively bad conditions. 
+
+* * *
+
+#
+
+Use the same model selection method you chose in Question 4 to again find the best multiple regression model to predict the natural log of home prices, but this time **replacing Lot.Area with log(Lot.Area)**. Do you arrive at a model including the same set of predictors?
+
+
+```{r Q6}
+# type your code for Question 6 here, and Knit
+# establish a multiple linear regression model log(Lot.Area)
+model3 <-
+  lm(log(price) ~ log(Lot.Area) + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = ames_train)
+summary(model3)
+
+# establish a bayesian multiple regression model by applying BMA to the log of price using potential predictors with log(Lot.Area)
+model4 <- 
+  bas.lm(log(price) ~ log(Lot.Area) + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = ames_train, prior = 'BIC', modelprior = uniform(), method = 'MCMC')
+summary(model4)
+```
+
+* * *
+
+* We have a lot difference in both models when applying log(Lot.Area). In multiple linear regression model, we have one regressor, Land.SlopeSev which is clearly not stat significant and one regressor, Land.SlopeMod which is probably not stat significant depending on difference significance level. In Bayesian model, by reviewing both the posterior model inclusion probability for each variable and the most probable models, the best model here also does not include Land.SlopeSev and Land.SlopeMod. Hence, in both models, we do not arrive at the final models including the same set of predictors.
+
+* * *
+
+#
+
+Do you think it is better to log transform Lot.Area, in terms of assumptions for linear regression? Make graphs of the predicted values of log home price versus the true values of log home price for the regression models selected for Lot.Area and log(Lot.Area). Referencing these two plots, provide a written support that includes a quantitative justification for your answer in the first part of question 7.
+
+```{r Q7}
+# type your code for Question 7 here, and Knit
+# use diagnostic plot to check the conditions for the linear model
+ggplot(data = model3, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() # nearly normal
+
+ggplot() +
+  geom_point(aes(x = model3$fitted.values, y = model3$residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") # constant variability
+
+plot(model3$residuals)
+abline(h = 0) # independence residuals
+
+# use diagnostic plot to check the conditions for the bayesian model
+plot(model4) 
+image(model4) 
+```
+
+* * *
+
+* By doing diagnostic plot on both models with log(Lot.Area), we believe it makes sense to log transform Lot.Area. In linear model, we can conclude that the we have nearly normal residuals, constant variability and independent residuals. In Bayesian model, it is clear that fitted values and residuals are constant associated around 0 line.
+
+* * *
+###
