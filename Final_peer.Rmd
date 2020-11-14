@@ -1,0 +1,459 @@
+---
+title: "Capstone Final Project"
+author: "Shaohan Wang"
+date: "08/29/2020"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Front Matter
+
+```{r message=FALSE, warning=FALSE}
+# clean up workspace environment
+rm(list = ls())
+```
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, your task is to develop a model to predict the selling price of a given home in Ames, Iowa. Your employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+# Training Data and relevant packages
+
+In order to better assess the quality of the model you will produce, the data have been randomly divided into three separate pieces: a training data set, a testing data set, and a validation data set. For now we will load the training data set, the others will be loaded and used later.
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+```
+
+Use the code block below to load any necessary packages
+
+```{r packages, message = FALSE}
+library(MASS)
+library(dplyr)
+library(ggplot2)
+library(BAS)
+library(broom)
+library(GGally)
+library(DataComputing)
+```
+
+## Part 1 - Exploratory Data Analysis (EDA)
+
+When you first get your data, it's very tempting to immediately begin fitting models and assessing how they perform.  However, before you begin modeling, it's absolutely essential to explore the structure of the data and the relationships between the variables in the data set.
+
+Do a detailed EDA of the ames_train data set, to learn about the structure of the data and the relationships between the variables in the data set (refer to Introduction to Probability and Data, Week 2, for a reminder about EDA if needed). Your EDA should involve creating and reviewing many plots/graphs and considering the patterns and relationships you see. 
+
+After you have explored completely, submit the three graphs/plots that you found most informative during your EDA process, and briefly explain what you learned from each (why you found each informative).
+
+* * *
+
+```{r creategraphs, fig.height=10, fig.width=10}
+# visualization 1
+ames_train %>%
+  ggplot(aes(x = reorder(Neighborhood, price/1000, mean), y = price/1000)) +
+  geom_boxplot(stat = 'boxplot') +
+  ylab('price in thousand') +
+  coord_flip()
+```
+
+* According to the side-by-side boxplot, we can easily find out the relationsip between the home prices and its neighborhood in Ames, Iowa. It is clear that houses in StoneBr have the highest average price and houses in MeadowV have the lowest average price. StoneBr and NridgHt has relatively larger variation in home prices. 
+
+```{r}
+summary(ames_train$price)
+
+# visualization 2
+ames_train %>%
+  ggplot(aes(x = price/1000)) + 
+  geom_histogram() +
+  xlab('price in thousand')
+```
+
+* The distribution of `price` is right-skewed and most of the home prices are lower than 200,000 dollars. The cheaper houses usually have relatively earlier construction date. 
+
+```{r}
+# visualization 3
+ames_train %>%
+  ggplot(aes(x = log(price), y = log(area))) +
+  geom_point(alpha = 0.3, position = "jitter") +
+  geom_smooth(method = 'lm') +
+  xlab('log of price') +
+  ylab('log area')
+```
+
+* We log transform `price` and `area` to make the relationship more linear and with smaller uncertainty. According to the graph, it is clear that `price` and `area` are positively associated with each other. Hence, we can consider `area` as one of the potential explanatory variable to predict our dependent variable `price` in simple linear regression model. 
+
+* * *
+
+## Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+### Section 2.1 An Initial Model
+In building a model, it is often useful to start by creating a simple, intuitive initial model based on the results of the exploratory data analysis. (Note: The goal at this stage is **not** to identify the "best" possible model but rather to choose a reasonable and understandable starting point. Later you will expand and revise this model to create your final model.
+
+Based on your EDA, select *at most* 10 predictor variables from “ames_train” and create a linear model for `price` (or a transformed version of price) using those variables. Provide the *R code* and the *summary output table* for your model, a *brief justification* for the variables you have chosen, and a *brief discussion* of the model results in context (focused on the variables that appear to be important predictors and how they relate to sales price).
+
+* * *
+
+```{r fit_model}
+# remove na in dataset 
+DataTable <- ames_train %>% dplyr:: select(Overall.Qual, Garage.Area, Total.Bsmt.SF, area, Bedroom.AbvGr , Year.Built, Lot.Area , Central.Air, Overall.Cond, price) 
+
+DataTable <- DataTable[complete.cases(DataTable),] # our new dataset
+
+# our initial model
+model1 <- lm(log(price) ~ Overall.Qual + log(Garage.Area + 1) +   
+                  log(Total.Bsmt.SF + 1) + log(area) + 
+                  Bedroom.AbvGr + Year.Built +
+                  log(Lot.Area) +  Central.Air + Overall.Cond,
+                 data = DataTable)
+
+summary(model1)
+```
+* We use 9 predictors here to build our initial multiple linear model. Our initial model focuses on using area and house condition factors to predict the house price. We log transform `price` and some other dependent variables to accomodate the right-skewness in the residuals. We add 1 before transforming the variables with potential 0 value. Then, by using `summary` function, we found that the overall model is stat significant with large Adjusted R-squared, but clearly the regressor `log(Garage.Area + 1)` is not stat significant here. 
+
+* * *
+
+### Section 2.2 Model Selection
+
+Now either using `BAS` another stepwise selection procedure choose the "best" model you can, using your initial model as your starting point. Try at least two different model selection methods and compare their results. Do they both arrive at the same model or do they disagree? What do you think this means?
+
+* * *
+
+```{r model_selection}
+model1_step_AIC <- stepAIC(model1, trace = FALSE, k = 2) # stepwise variable selection using AIC
+model1_step_AIC$anova
+
+model1_step_BIC <- stepAIC(model1, trace = FALSE, k = log(nrow(DataTable))) # stepwise variable selection using BIC
+model1_step_BIC$anova
+```
+* We have `log(Garage.Area + 1)` included with stepwise variable selection using AIC but not BIC. Thus, we don't arrive at a same model here and the reason why log(Garage.Area + 1) was excluded from BIC stepwise method is that the regressor `log(Garage.Area + 1)` is not stat significant in inital model. 
+
+* * *
+
+### Section 2.3 Initial Model Residuals
+One way to assess the performance of a model is to examine the model's residuals. In the space below, create a residual plot for your preferred model from above and use it to assess whether your model appears to fit the data well. Comment on any interesting structure in the residual plot (trend, outliers, etc.) and briefly discuss potential implications it may have for your model and inference / prediction you might produce.
+
+* * *
+
+```{r model_resid}
+plot(model1, 1) # initial regression model residuals diagnostic
+plot(model1$residuals)
+abline(h = 0) # independence residuals
+```
+* By ploting the diagnostic plots, it is clear that our initial model generates some outliers, such as case 428 and case 310. However, since most fitted values are clustered around 0 residual value line and all the residuals are randomly centered around 0 which means independence, we can still conclude that the initial model appears to fit the data well. 
+
+* * *
+
+### Section 2.4 Initial Model RMSE
+
+You can calculate it directly based on the model output. Be specific about the units of your RMSE (depending on whether you transformed your response variable). The value you report will be more meaningful if it is in the original units (dollars).
+
+* * *
+
+```{r model_rmse}
+# Extract Predictions
+predict_model1 <- exp(predict(model1, DataTable))
+
+# Extract Residuals
+resid_model1 <- as.numeric(DataTable$price - predict_model1)
+
+# Calculate RMSE
+sqrt(mean(resid_model1^2))
+```
+* Our inital model's RMSE is 33578.72 dollars. In general, the better the model fit, the lower the RMSE. Thus, we might need to develop a better model. 
+
+
+* * *
+
+### Section 2.5 Overfitting 
+
+The process of building a model generally involves starting with an initial model (as you have done above), identifying its shortcomings, and adapting the model accordingly. This process may be repeated several times until the model fits the data reasonably well. However, the model may do well on training data but perform poorly out-of-sample (meaning, on a dataset other than the original training data) because the model is overly-tuned to specifically fit the training data. This is called “overfitting.” To determine whether overfitting is occurring on a model, compare the performance of a model on both in-sample and out-of-sample data sets. To look at performance of your initial model on out-of-sample data, you will use the data set `ames_test`.
+
+```{r loadtest, message = FALSE}
+load("ames_test.Rdata")
+```
+
+Use your model from above to generate predictions for the housing prices in the test data set.  Are the predictions significantly more accurate (compared to the actual sales prices) for the training data than the test data?  Why or why not? Briefly explain how you determined that (what steps or processes did you use)?
+
+* * *
+
+```{r initmodel_test}
+# RMSE for out-of-sample data
+sqrt(mean((ames_test$price - exp(predict(model1, ames_test)))^2))
+
+# the out-of-sample coverage prob for `model1`
+predict_model1 <- exp(predict(model1, ames_test, interval = "prediction"))
+
+coverage_prob_model1 <- mean(ames_test$price > predict_model1[,"lwr"] &
+                            ames_test$price < predict_model1[,"upr"])
+coverage_prob_model1
+```
+* One metric for comparing out-of-sample performance for multiple models is called root mean squared error (RMSE). Our `RMSE` for out-of-sample data is 25670.74 dollars which is a lot smaller than 33578.72 dollars. One way to assess how well a model reflects uncertainty is determining coverage probability. Our `coverage probability` for out-of-sample data is 0.9791922. 
+
+* In general, the better the model fit, the lower the RMSE. Hence, we con conlude that the predictions are *significantly more accurate (compared to the actual sales prices) for the test data than the training data*. Hence, our initial model is not overfitting.
+
+* * *
+
+**Note to the learner:** If in real-life practice this out-of-sample analysis shows evidence that the training data fits your model a lot better than the test data, it is probably a good idea to go back and revise the model (usually by simplifying the model) to reduce this overfitting. For simplicity, we do not ask you to do this on the assignment, however.
+
+## Part 3 Development of a Final Model
+
+Now that you have developed an initial model to use as a baseline, create a final model with *at most* 20 variables to predict housing prices in Ames, IA, selecting from the full array of variables in the dataset and using any of the tools that we introduced in this specialization.  
+
+Carefully document the process that you used to come up with your final model, so that you can answer the questions below.
+
+### Section 3.1 Final Model
+
+Provide the summary table for your model.
+
+* * *
+
+```{r model_playground}
+# set the final model
+model_final <- lm(log(price) ~ Overall.Qual +   
+                  log(Total.Bsmt.SF + 1) + log(area) + 
+                  Bedroom.AbvGr + Year.Built +
+                  log(Lot.Area) +  Central.Air + Overall.Cond,
+                 data = DataTable) # we exclude `log(Garage.Area + 1)` which is not a stat significant regressor
+
+summary(model_final)
+```
+* We reach our final multiple linear regression model with all stat significant regressors deriving from our initial model. Now, we have a great predictive model with higher goodness of fit with 8 predictors. 
+
+* * *
+
+### Section 3.2 Transformation
+
+Did you decide to transform any variables?  Why or why not? Explain in a few sentences.
+
+* * *
+
+```{r model_assess}
+# use diagnostic plot to check the conditions for our final model
+ggplot(data = model_final, aes(x = model_final$residuals)) +
+         geom_histogram()  
+
+ggplot(data = model_final, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() # nearly normal
+
+ggplot() +
+  geom_point(aes(x = model_final$fitted.values, y = model_final$residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") # constant variability
+
+plot(model_final$residuals)
+abline(h = 0) # independence residuals
+```
+
+* We *will not do any* transformation to any variables in the final model because we have almost constant variability between the predicted values and residuals in final model. Besides, we have a nearly normal residuals with mean 0 and all the residuals are randomly centered around 0 line which means independence. 
+
+* * *
+
+### Section 3.3 Variable Interaction
+
+Did you decide to include any variable interactions? Why or why not? Explain in a few sentences.
+
+* * *
+
+```{r fig.height=12, fig.width=12}
+# check collinearity
+ggpairs(columns = c(1,3:9), data = DataTable) # exclude `log(Garage.Area + 1)`
+```
+
+* We *will not include* any variable interactions. By the diagnostic plot here, we can conclude the variables included in our final model are not strongly correlated with each other. Hence, we do not need to add interactions here to offset the negative effect of collinearity.
+
+* * *
+
+### Section 3.4 Variable Selection
+
+What method did you use to select the variables you included? Why did you select the method you used? Explain in a few sentences.
+
+* * *
+
+```{r model_select}
+model_fina_step_AIC <- stepAIC(model_final, trace = FALSE, k = 2) # stepwise variable selection using AIC
+model_fina_step_AIC$anova
+
+model_final_step_BIC <- stepAIC(model_final, trace = FALSE, k = log(nrow(DataTable))) # stepwise variable selection using BIC
+model_final_step_BIC$anova
+```
+
+* We have used both AIC and BIC as stepwise variable selection methods here. This time we do arrive at a same model at the end when applying the two methods and all the regressors included in our final model are stat significant. 
+
+* * *
+
+### Section 3.5 Model Testing
+
+How did testing the model on out-of-sample data affect whether or how you changed your model? Explain in a few sentences.
+
+* * *
+
+```{r model_testing}
+# set the potential alternate bayesian regression model by applying BMA to the log(price) using all potential predictors
+model2 <- bas.lm(log(price) ~ Overall.Qual + log(Garage.Area + 1) +
+                  log(Total.Bsmt.SF + 1) + log(area) + 
+                  Bedroom.AbvGr + Year.Built +
+                  log(Lot.Area) +  Central.Air + Overall.Cond,
+                 data = DataTable, prior = 'BIC', modelprior = uniform(), method = 'MCMC')
+
+summary(model2) # exclude the predictors which have relatively low posterior prob to be included in our model
+
+# set the revised bayesian model
+model3 <- bas.lm(log(price) ~ Overall.Qual +
+                  log(Total.Bsmt.SF + 1) + log(area) + 
+                  Bedroom.AbvGr + Year.Built +
+                  log(Lot.Area) +  Central.Air + Overall.Cond,
+                 data = DataTable, prior = 'BIC', modelprior = uniform(), method = 'MCMC')
+
+summary(model3) 
+
+# use diagnostic plot to check the conditions for the bayesian model
+plot(model3) 
+image(model3) 
+```
+
+* We use the bayesian multiple regression model as a potential alternative with Bayesian model averaging (BMA), which involves averaging over many possible models. We set our Bayesian multiple regression model with the possible predictors by Bayesian Model Average based on prior on Bayesian Information Criterion(BIC). 
+
+* Then, we use `summary` function to find the best 5 models with highest posterior prob and highest Bayes factors. We pick the best one with the predictors which have high posterior prob to be included in our model and drop other statistically insignificant regressors. Then, we also use the `summary` table to double check the posterior prob and Bayes factors and thus, find out that our current model has the highest goodness of fit.
+
+
+```{r}
+# We use 'BPM' to test our bayesian model on both out-of-sample data and training data
+# RMSE for out-of-sample data
+predict_model3_BPM_test <- predict(model3, newdata = ames_test, estimator="BPM")
+predict_BPM_RMSE_test <- sqrt(mean((exp(predict_model3_BPM_test$fit) - ames_test$price)^2))
+predict_BPM_RMSE_test # use BPM prediction method
+
+# RMSE for our training data
+predict_model3_BPM_train <- predict(model3, newdata = DataTable, estimator="BPM")
+predict_BPM_RMSE_train <- sqrt(mean((exp(predict_model3_BPM_train$fit) - DataTable$price)^2))
+predict_BPM_RMSE_train 
+```
+* With the potential alternate Bayesian regression model, our `RMSE` for out-of-sample data is 25685.22 dollars and our `RMSE` for the training data is 33642.41 dollars. we con conlude that our Bayesian model is not overfitting.  
+
+* In general, the better the model fit, the lower the RMSE. With the initial multiple linear regression model, our `RMSE` for out-of-sample data is 25670.74 dollars and our `RMSE` for the training data is 33578.72 dollars. Hence, we will not change our model to Bayesian and will insist on applying multiple linear regression to do the prediction. 
+
+* * *
+
+## Part 4 Final Model Assessment
+
+### Section 4.1 Final Model Residual
+
+For your final model, create and briefly interpret an informative plot of the residuals.
+
+* * *
+
+```{r}
+# diagnostic plots of our final model residuals
+ggplot(data = model_final, aes(x = model_final$residuals)) +
+         geom_histogram()  
+
+ggplot(data = model_final, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() # nearly normal
+
+plot(model_final,1)
+
+plot(model_final$residuals)
+abline(h = 0) # independence residuals
+```
+
+* By the graphs, we can see that all the residuals are centered around 0 line as the index increasing. Hence, we can conclude that our final model has independent residuals and all the residuals are nearly normal with mean 0. Besides, we also believe that the variability are constant since the residuals are almost centered around 0 line versus the fitted values. 
+
+* However, we cannot ignore that the linear relationship between residuals and the fitted values is not perfectly horizontal and which may lead to a larger residual values as the fitted values getting larger. 
+
+* * *
+
+### Section 4.2 Final Model RMSE
+
+For your final model, calculate and briefly comment on the RMSE.
+
+* * *
+
+```{r}
+# RMSE for out-of-sample data
+sqrt(mean((ames_test$price - exp(predict(model_final, ames_test)))^2))
+# RMSE for our training data
+sqrt(mean((DataTable$price - exp(predict(model_final, DataTable)))^2))
+```
+* The final model's RMSE has not changed significantly from the initial model. In this case, the out-of-sample dataset has a better fit for the model than the training dataset, which means our final model is not overfitted. 
+
+* * *
+
+### Section 4.3 Final Model Evaluation
+
+What are some strengths and weaknesses of your model?
+
+* * *
+
+```{r}
+# final model summary
+summary(model_final)
+
+# use diagnostic plot to check the conditions for our final model
+ggplot(data = model_final, aes(x = model_final$residuals)) +
+         geom_histogram()  
+
+ggplot(data = model_final, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() # nearly normal
+
+plot(model_final, 1) # constant variability
+
+plot(model_final$residuals)
+abline(h = 0) # independence residuals 
+```
+
+* One of the strengths of the final model is relatively low RMSE for testing data and thus, the out-of-sample dataset has a better fit for the model than the training dataset. Besides, the final model has a very low p-value which means higher goodness of fit overall. 
+
+* However, our final model does not have perfectly constant variability. The linear relationship between residuals and the fitted values is not perfectly horizontal and which may lead to prediction bias as the fitted values getting larger. We would not be certain to make the prediction for the houses with very high prices with our model. 
+
+* * *
+
+### Section 4.4 Final Model Validation
+
+Testing your final model on a separate, validation data set is a great way to determine how your model will perform in real-life practice. 
+
+You will use the “ames_validation” dataset to do some additional assessment of your final model. Discuss your findings, be sure to mention:
+* What is the RMSE of your final model when applied to the validation data? 
+* How does this value compare to that of the training data and/or testing data?
+* What percentage of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set?  
+* From this result, does your final model properly reflect uncertainty?
+
+```{r loadvalidation, message = FALSE}
+load("ames_validation.Rdata")
+```
+
+* * *
+
+```{r model_validate}
+# RMSE for validation data
+sqrt(mean((ames_validation$price - exp(predict(model_final, ames_validation)))^2))
+
+# Calculate proportion of observations that fall within 95% prediction intervals for validation data
+predict_model_final <- exp(predict(model_final, ames_validation, interval = "prediction"))
+
+coverage_prob_model_final <- mean(ames_validation$price > predict_model_final[,"lwr"] &
+                            ames_validation$price < predict_model_final[,"upr"])
+coverage_prob_model_final
+
+```
+* In general, the better the model fit, the lower the RMSE. With the initial multiple linear regression model, our `RMSE` for testing data is 25685.22 dollars and our `RMSE` for the training data is 33642.41 dollars. Our `RMSE` for validation data is 23114.33 which is lower than that of the test and training data. Hence, `ames_validation` dataset is a even better fit for our final model.
+
+* According to the coverage prob of validation dataset, the 95% predictive confidence intervals for the predicted prices will contain the true price of the house roughly 98.03% of the time. The final model *still shows uncertainty* because 98.03% coverage prob does not guarantee all of the 95% predictive confidence intervals for the predicted prices will contain the true price of the house.
+
+* * *
+
+## Part 5 Conclusion
+
+Provide a brief summary of your results, and a brief discussion of what you have learned about the data and your model. 
+
+* * *
+
+* In conclusion, our final multiple linear regression model has good predictive power with a high R^2 adjusted value of roughly 86.46% with only 8 variables. Besides, when dealing with out-of-sample dataset, the model also has relatively lower root mean squared error (RMSE) and larger coverage probability to reflect lower uncertainty. Although, there are some noticeable shortcomings, for example, the prediction power will reduce as the fitted values getting larger, the overall model can still provide a meaningful prediction for the general housing prices in Ames, Iowa.
+
+**You've reached the bottom and thank you very much for reviewing!**
+
+* * *
