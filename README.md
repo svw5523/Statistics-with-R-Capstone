@@ -1,4 +1,4 @@
-# Statistics with R Capstone
+# Statistics with R Capstone (Statistics wit R Specialization Coursera)
 
 Using the tools and techniques you learned in the specialization, you will build a model to predict housing prices in Ames, and explain how you decided on this model. The assignment consists of five parts:
 
